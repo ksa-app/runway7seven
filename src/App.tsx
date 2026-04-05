@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
+type Agent = {
+  id: string;
+  name: string;
+};
+
 type Candidate = {
   id: string;
   sl: number;
@@ -8,12 +13,7 @@ type Candidate = {
   passport_no: string;
   received_date: string;
   agent_id: string;
-  agents?: { name: string };
-};
-
-type Agent = {
-  id: string;
-  name: string;
+  agents?: { name: string }[]; // 🔥 FIXED (array)
 };
 
 export default function App() {
@@ -28,7 +28,7 @@ export default function App() {
   const pageSize = 5;
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editData, setEditData] = useState<any>(null);
+  const [editData, setEditData] = useState<Candidate | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -37,18 +37,21 @@ export default function App() {
     agent_id: "",
   });
 
-  // 📡 Load Data
+  // 📡 FETCH CANDIDATES
   const fetchData = async () => {
     setLoading(true);
 
     let query = supabase
       .from("candidates")
-      .select(
-        `
-        id, sl, name, passport_no, received_date, agent_id,
+      .select(`
+        id,
+        sl,
+        name,
+        passport_no,
+        received_date,
+        agent_id,
         agents ( name )
-      `
-      )
+      `)
       .order("sl", { ascending: true });
 
     if (selectedAgent) {
@@ -57,13 +60,21 @@ export default function App() {
 
     const { data, error } = await query;
 
-    if (!error) setData(data || []);
+    if (error) {
+      console.log("FETCH ERROR:", error);
+      setData([]);
+    } else {
+      setData(data as Candidate[]);
+    }
+
     setLoading(false);
   };
 
+  // 📡 FETCH AGENTS
   const fetchAgents = async () => {
-    const { data } = await supabase.from("agents").select("id, name");
-    setAgents(data || []);
+    const { data, error } = await supabase.from("agents").select("id, name");
+
+    if (!error) setAgents(data || []);
   };
 
   useEffect(() => {
@@ -71,21 +82,21 @@ export default function App() {
     fetchAgents();
   }, [selectedAgent]);
 
-  // 🔍 Filter
+  // 🔍 SEARCH FILTER
   const filteredData = data.filter(
     (d) =>
       d.name.toLowerCase().includes(search.toLowerCase()) ||
       d.passport_no.toLowerCase().includes(search.toLowerCase())
   );
 
-  // 📄 Pagination
+  // 📄 PAGINATION
   const totalPages = Math.ceil(filteredData.length / pageSize);
   const paginatedData = filteredData.slice(
     (page - 1) * pageSize,
     page * pageSize
   );
 
-  // ➕ Add / ✏️ Update
+  // 💾 SAVE (INSERT / UPDATE)
   const handleSubmit = async () => {
     if (!form.name || !form.passport_no) {
       alert("Name & Passport required");
@@ -93,33 +104,48 @@ export default function App() {
     }
 
     if (editData) {
-      await supabase
+      const { error } = await supabase
         .from("candidates")
         .update(form)
         .eq("id", editData.id);
+
+      if (error) console.log(error);
     } else {
-      await supabase.from("candidates").insert([form]);
+      const { error } = await supabase.from("candidates").insert([form]);
+
+      if (error) console.log(error);
     }
 
     setModalOpen(false);
     setEditData(null);
-    setForm({ name: "", passport_no: "", received_date: "", agent_id: "" });
+    setForm({
+      name: "",
+      passport_no: "",
+      received_date: "",
+      agent_id: "",
+    });
 
     fetchData();
   };
 
-  // ❌ Delete
+  // ❌ DELETE
   const handleDelete = async () => {
     if (!editData) return;
+
     if (!confirm("Are you sure?")) return;
 
-    await supabase.from("candidates").delete().eq("id", editData.id);
+    const { error } = await supabase
+      .from("candidates")
+      .delete()
+      .eq("id", editData.id);
+
+    if (error) console.log(error);
 
     setModalOpen(false);
     fetchData();
   };
 
-  // ✏️ Edit Open
+  // ✏️ OPEN EDIT
   const openEdit = (item: Candidate) => {
     setEditData(item);
     setForm({
@@ -135,11 +161,11 @@ export default function App() {
     <div className="p-4">
       <h1 className="text-xl font-bold mb-4">Candidate Dashboard</h1>
 
-      {/* 🔍 Filters */}
+      {/* 🔍 FILTERS */}
       <div className="flex gap-2 mb-4">
         <input
-          placeholder="Search..."
           className="border p-2 rounded"
+          placeholder="Search..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -170,11 +196,11 @@ export default function App() {
             setModalOpen(true);
           }}
         >
-          + Add test
+          + Add
         </button>
       </div>
 
-      {/* 📊 Table */}
+      {/* 📊 TABLE */}
       <div className="border rounded overflow-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-100">
@@ -192,7 +218,9 @@ export default function App() {
             {paginatedData.map((item) => (
               <tr key={item.id} className="border-t">
                 <td className="p-2">{item.sl}</td>
+
                 <td className="p-2">{item.name}</td>
+
                 <td
                   className="p-2 text-blue-600 cursor-pointer"
                   onClick={() => {
@@ -202,8 +230,14 @@ export default function App() {
                 >
                   {item.passport_no}
                 </td>
+
                 <td className="p-2">{item.received_date}</td>
-                <td className="p-2">{item.agents?.name || "N/A"}</td>
+
+                {/* 🔥 FIXED HERE */}
+                <td className="p-2">
+                  {item.agents?.[0]?.name || "N/A"}
+                </td>
+
                 <td className="p-2">
                   <button
                     className="text-blue-500"
@@ -226,14 +260,16 @@ export default function App() {
         </table>
       </div>
 
-      {/* 📄 Pagination */}
+      {/* 📄 PAGINATION */}
       <div className="flex justify-end mt-3 gap-2">
         <button disabled={page === 1} onClick={() => setPage(page - 1)}>
           Prev
         </button>
+
         <span>
           {page} / {totalPages || 1}
         </span>
+
         <button
           disabled={page === totalPages}
           onClick={() => setPage(page + 1)}
@@ -242,7 +278,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* 🪟 Modal */}
+      {/* 🪟 MODAL */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
           <div className="bg-white p-4 rounded w-80">
@@ -251,8 +287,8 @@ export default function App() {
             </h2>
 
             <input
-              placeholder="Name"
               className="border p-2 w-full mb-2"
+              placeholder="Name"
               value={form.name}
               onChange={(e) =>
                 setForm({ ...form, name: e.target.value })
@@ -260,8 +296,8 @@ export default function App() {
             />
 
             <input
-              placeholder="Passport"
               className="border p-2 w-full mb-2"
+              placeholder="Passport"
               value={form.passport_no}
               onChange={(e) =>
                 setForm({ ...form, passport_no: e.target.value })
