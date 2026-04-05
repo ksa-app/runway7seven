@@ -329,7 +329,7 @@ export default function App() {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {paginatedData.map((item, idx) => (
+                {paginatedData.map((item) => (
                   <tr key={item.id} className="table-row">
                     <td className="px-6 py-4 text-sm text-slate-500 font-mono">
                       {item.sl}
